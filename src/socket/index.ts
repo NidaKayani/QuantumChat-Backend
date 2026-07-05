@@ -6,7 +6,7 @@ import { config } from '../config';
 import { logger } from '../config/logger';
 import { User, Website } from '../models';
 import { MessageService, UserService, ConversationService } from '../services';
-import type { AuthPayload } from '../middleware/auth';
+import { isAdminRole, type AuthPayload } from '../middleware/auth';
 
 interface SocketData {
   userId: string;
@@ -34,6 +34,11 @@ export function initSocketIO(httpServer: HttpServer): Server {
       const decoded = jwt.verify(token, config.jwt.secret) as AuthPayload;
       const user = await User.findById(decoded.userId);
       if (!user || user.isBlocked) return next(new Error('Access denied'));
+
+      // Admins cannot join messaging sockets (privacy: no personal conversations)
+      if (isAdminRole(user.role)) {
+        return next(new Error('Admins cannot access personal conversations'));
+      }
 
       socket.data = {
         userId: user._id.toString(),

@@ -391,19 +391,6 @@ export class MessageController {
       next(err);
     }
   }
-
-  static async adminList(req: AuthRequest, res: Response, next: NextFunction) {
-    try {
-      const result = await MessageService.adminList(
-        req.query.websiteId as string,
-        parseInt(req.query.page as string) || 1,
-        parseInt(req.query.limit as string) || 50
-      );
-      res.json({ success: true, data: result });
-    } catch (err) {
-      next(err);
-    }
-  }
 }
 
 export class AttachmentController {

@@ -517,7 +517,7 @@ export class MessageService {
           userId: participantId,
           type: 'new_message',
           title: 'New message',
-          body: content.slice(0, 100) || 'Sent an attachment',
+          body: content.startsWith('__QC_E2E__') ? 'You received an encrypted message' : content.slice(0, 100) || 'Sent an attachment',
           data: { conversationId, messageId: message._id.toString() },
         });
       }
@@ -546,14 +546,14 @@ export class MessageService {
       .populate('attachments');
   }
 
-  static async delete(messageId: string, userId: string, role: string) {
+  static async delete(messageId: string, userId: string, _role: string) {
     const message = await Message.findById(messageId);
     if (!message) throw new AppError(404, 'Message not found');
 
-    const isOwner = message.senderId.toString() === userId;
-    const isModerator = ([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN, USER_ROLES.MODERATOR] as string[]).includes(role);
-
-    if (!isOwner && !isModerator) throw new AppError(403, 'Cannot delete this message');
+    // Only the sender may delete their own message — admins cannot access personal content
+    if (message.senderId.toString() !== userId) {
+      throw new AppError(403, 'Cannot delete this message');
+    }
 
     message.isDeleted = true;
     message.deletedAt = new Date();
@@ -602,24 +602,6 @@ export class MessageService {
     return { conversationId, userId };
   }
 
-  static async adminList(websiteId?: string, page = 1, limit = 50) {
-    const { skip, page: p, limit: l } = paginate(page, limit);
-    const filter: Record<string, unknown> = {};
-    if (websiteId) filter.websiteId = websiteId;
-
-    const [data, total] = await Promise.all([
-      Message.find(filter)
-        .populate('senderId', 'displayName email')
-        .populate('conversationId')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(l)
-        .lean(),
-      Message.countDocuments(filter),
-    ]);
-
-    return { data, page: p, limit: l, total, hasMore: skip + data.length < total };
-  }
 }
 
 export class AttachmentService {

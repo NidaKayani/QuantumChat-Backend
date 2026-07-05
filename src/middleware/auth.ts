@@ -69,6 +69,28 @@ export function requireRole(...roles: UserRole[]) {
 export const requireAdmin = requireRole(USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN);
 export const requireSuperAdmin = requireRole(USER_ROLES.SUPER_ADMIN);
 
+const ADMIN_ROLES = new Set<string>([USER_ROLES.ADMIN, USER_ROLES.SUPER_ADMIN]);
+
+/** Admins may only use analytics / user management — not personal conversations. */
+export function blockAdminFromMessaging(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): void {
+  if (req.user && ADMIN_ROLES.has(req.user.role)) {
+    res.status(403).json({
+      success: false,
+      error: 'Admins cannot access personal conversations or messages',
+    });
+    return;
+  }
+  next();
+}
+
+export function isAdminRole(role: string): boolean {
+  return ADMIN_ROLES.has(role);
+}
+
 export async function validateApiKey(
   req: AuthRequest,
   res: Response,
