@@ -24,10 +24,10 @@ export function LoginPage({ onLogin }: { onLogin: () => void }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-qc-bg">
+    <div className="min-h-screen flex flex-col">
       <div className="qc-mesh-bg" aria-hidden />
 
-      <header className="relative z-20 flex items-center justify-between px-6 py-4 border-b border-qc-border bg-qc-surface/80 backdrop-blur-md">
+      <header className="relative z-20 flex items-center justify-between px-6 py-4 border-b border-qc-border qc-header">
         <div className="flex items-center gap-3">
           <img src="/logo.png" alt="QuantumChat" width={36} height={36} className="rounded-lg" />
           <span className="font-bold text-qc-text text-sm">QuantumChat</span>

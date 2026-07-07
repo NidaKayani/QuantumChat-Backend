@@ -1,7 +1,7 @@
 export type ThemeMode = 'light' | 'dark' | 'midnight' | 'ocean';
 
 export const THEME_OPTIONS: { id: ThemeMode; label: string; icon: string; description: string }[] = [
-  { id: 'light', label: 'Light', icon: '☀️', description: 'Clean bright workspace' },
+  { id: 'light', label: 'Sky', icon: '☁️', description: 'Light blue glass workspace' },
   { id: 'dark', label: 'Dark', icon: '🌙', description: 'Soft charcoal tones' },
   { id: 'midnight', label: 'Midnight', icon: '✦', description: 'Deep navy quantum' },
   { id: 'ocean', label: 'Ocean', icon: '🌊', description: 'Teal coastal vibe' },
@@ -14,7 +14,7 @@ export function getStoredTheme(): ThemeMode {
   if (stored === 'light' || stored === 'dark' || stored === 'midnight' || stored === 'ocean') {
     return stored;
   }
-  return 'midnight';
+  return 'light';
 }
 
 export function applyTheme(theme: ThemeMode) {

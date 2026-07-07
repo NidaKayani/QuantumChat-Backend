@@ -5,26 +5,27 @@
 /* ── Theme tokens ─────────────────────────────────────────── */
 :root,
 [data-theme='light'] {
-  --qc-bg: #f0f4f8;
-  --qc-surface: #ffffff;
-  --qc-surface-2: #f8fafc;
-  --qc-surface-3: #e2e8f0;
-  --qc-border: rgba(15, 23, 42, 0.1);
-  --qc-text: #0f172a;
-  --qc-muted: #64748b;
+  --qc-bg: #b8d4f5;
+  --qc-surface: rgba(224, 242, 254, 0.72);
+  --qc-surface-2: rgba(191, 219, 254, 0.55);
+  --qc-surface-3: rgba(147, 197, 253, 0.45);
+  --qc-border: rgba(37, 99, 235, 0.18);
+  --qc-text: #0c4a6e;
+  --qc-muted: #0369a1;
   --qc-accent: #2563eb;
   --qc-accent-2: #3b82f6;
-  --qc-accent-soft: rgba(37, 99, 235, 0.1);
-  --qc-accent-glow: rgba(37, 99, 235, 0.2);
-  --qc-header-bg: rgba(255, 255, 255, 0.85);
-  --qc-mesh-1: rgba(37, 99, 235, 0.08);
-  --qc-mesh-2: rgba(99, 102, 241, 0.06);
-  --qc-danger: #ef4444;
-  --qc-success: #10b981;
-  --qc-chart-grid: rgba(15, 23, 42, 0.08);
-  --qc-tooltip-bg: #ffffff;
-  --qc-tooltip-border: rgba(15, 23, 42, 0.12);
-  --qc-shadow: 0 4px 24px rgba(15, 23, 42, 0.08);
+  --qc-accent-soft: rgba(37, 99, 235, 0.14);
+  --qc-accent-glow: rgba(59, 130, 246, 0.28);
+  --qc-header-bg: rgba(224, 242, 254, 0.78);
+  --qc-mesh-1: rgba(59, 130, 246, 0.22);
+  --qc-mesh-2: rgba(99, 102, 241, 0.16);
+  --qc-danger: #dc2626;
+  --qc-success: #059669;
+  --qc-chart-grid: rgba(12, 74, 110, 0.1);
+  --qc-tooltip-bg: rgba(224, 242, 254, 0.95);
+  --qc-tooltip-border: rgba(37, 99, 235, 0.2);
+  --qc-shadow: 0 8px 32px rgba(37, 99, 235, 0.12), 0 1px 0 rgba(255, 255, 255, 0.5) inset;
+  --qc-glass-blur: 20px;
 }
 
 [data-theme='dark'] {
@@ -102,7 +103,10 @@
   }
 
   body {
-    @apply bg-qc-bg text-qc-text font-sans transition-colors duration-300;
+    @apply text-qc-text font-sans transition-colors duration-300;
+    background: linear-gradient(145deg, #93c5fd 0%, #bfdbfe 35%, #c7d2fe 70%, #bae6fd 100%);
+    background-attachment: fixed;
+    min-height: 100vh;
   }
 }
 
@@ -111,15 +115,17 @@
   .qc-mesh-bg {
     @apply fixed inset-0 pointer-events-none z-0;
     background:
-      radial-gradient(ellipse 80% 60% at 10% 20%, var(--qc-mesh-1), transparent),
-      radial-gradient(ellipse 60% 50% at 90% 80%, var(--qc-mesh-2), transparent);
+      radial-gradient(ellipse 70% 55% at 15% 15%, var(--qc-mesh-1), transparent 55%),
+      radial-gradient(ellipse 55% 45% at 85% 85%, var(--qc-mesh-2), transparent 50%),
+      radial-gradient(ellipse 40% 35% at 60% 30%, rgba(255, 255, 255, 0.25), transparent);
   }
 
-  /* ── Header ── */
   .qc-header {
     background: var(--qc-header-bg);
-    backdrop-filter: blur(16px);
+    backdrop-filter: blur(var(--qc-glass-blur, 20px));
+    -webkit-backdrop-filter: blur(var(--qc-glass-blur, 20px));
     border-bottom: 1px solid var(--qc-border);
+    box-shadow: 0 4px 24px rgba(37, 99, 235, 0.08);
   }
 
   .qc-logo-ring {
@@ -132,7 +138,9 @@
   .qc-nav-dock {
     @apply items-center gap-1 p-1 rounded-2xl;
     background: var(--qc-surface);
-    border: 1px solid var(--qc-border);
+    backdrop-filter: blur(var(--qc-glass-blur, 20px));
+    -webkit-backdrop-filter: blur(var(--qc-glass-blur, 20px));
+    border: 1px solid rgba(255, 255, 255, 0.45);
     box-shadow: var(--qc-shadow);
   }
 
@@ -172,7 +180,9 @@
   .qc-workspace {
     @apply rounded-3xl p-6 lg:p-8;
     background: var(--qc-surface);
-    border: 1px solid var(--qc-border);
+    backdrop-filter: blur(var(--qc-glass-blur, 20px));
+    -webkit-backdrop-filter: blur(var(--qc-glass-blur, 20px));
+    border: 1px solid rgba(255, 255, 255, 0.5);
     box-shadow: var(--qc-shadow);
   }
 
@@ -221,16 +231,19 @@
 
   /* ── Cards & forms ── */
   .qc-admin-card {
-    @apply rounded-2xl backdrop-blur-sm;
+    @apply rounded-2xl;
     background: var(--qc-surface-2);
-    border: 1px solid var(--qc-border);
-    box-shadow: var(--qc-shadow);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    box-shadow: 0 4px 20px rgba(37, 99, 235, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.5);
   }
 
   .qc-admin-input {
     @apply w-full rounded-xl px-4 py-2.5 outline-none transition-colors;
-    background: var(--qc-bg);
-    border: 1px solid var(--qc-border);
+    background: rgba(239, 246, 255, 0.65);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(37, 99, 235, 0.15);
     color: var(--qc-text);
   }
 
@@ -364,7 +377,9 @@
   .qc-admin-login-card {
     @apply rounded-3xl p-8 lg:p-10;
     background: var(--qc-surface);
-    border: 1px solid var(--qc-border);
+    backdrop-filter: blur(var(--qc-glass-blur, 20px));
+    -webkit-backdrop-filter: blur(var(--qc-glass-blur, 20px));
+    border: 1px solid rgba(255, 255, 255, 0.5);
     box-shadow: var(--qc-shadow);
   }
 

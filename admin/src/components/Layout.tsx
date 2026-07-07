@@ -47,7 +47,7 @@ export function Layout({ onLogout }: { onLogout: () => void }) {
   );
 
   return (
-    <div className="min-h-screen flex flex-col bg-qc-bg">
+    <div className="min-h-screen flex flex-col">
       <div className="qc-mesh-bg" aria-hidden />
 
       <header className="sticky top-0 z-40 qc-header">
