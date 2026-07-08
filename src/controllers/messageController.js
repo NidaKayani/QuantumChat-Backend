@@ -32,8 +32,11 @@ export async function sendMessage(req, res) {
       attachment: attachmentId || undefined,
     });
 
+    // Not present in serverless deployments (e.g. Vercel), which can't hold
+    // the persistent connections Socket.IO needs — REST send/fetch still
+    // works there, just without the instant push.
     const io = req.app.get('io');
-    io.to(to.toString()).emit('message:new', message);
+    if (io) io.to(to.toString()).emit('message:new', message);
 
     res.status(201).json({ success: true, data: message });
   } catch (err) {
