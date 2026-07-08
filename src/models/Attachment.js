@@ -19,4 +19,4 @@ const attachmentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export default mongoose.model('Attachment', attachmentSchema);
+export default mongoose.model('Attachment', attachmentSchema, 'attachments');
