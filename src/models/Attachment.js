@@ -13,8 +13,15 @@ const attachmentSchema = new mongoose.Schema(
     // open them — nacl.box ciphertext in, nacl.box ciphertext out.
     storagePath: { type: String, required: true },
     nonce: { type: String, required: true },
-    senderPublicKey: { type: String, required: true, match: HEX_64 },
-    recipientPublicKey: { type: String, required: true, match: HEX_64 },
+    // Sealed-box envelope metadata: a one-time ephemeral keypair was used to
+    // seal the file to the recipient's public key (targetPublicKey). Only
+    // the recipient's matching private key can open it — including the
+    // sender, who deliberately can't re-decrypt their own upload afterward
+    // (they already have the original file locally when they chose to send
+    // it, and sealing a second copy to themselves would double the upload
+    // cost for every attachment).
+    ephemeralPublicKey: { type: String, required: true, match: HEX_64 },
+    targetPublicKey: { type: String, required: true, match: HEX_64 },
   },
   { timestamps: true }
 );

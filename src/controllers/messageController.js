@@ -3,20 +3,27 @@ import Message from '../models/Message.js';
 
 const HEX_64 = /^[0-9a-f]{64}$/i;
 
+function validateEnvelope(envelope) {
+  return (
+    envelope &&
+    typeof envelope.ciphertext === 'string' &&
+    typeof envelope.nonce === 'string' &&
+    HEX_64.test(envelope.ephemeralPublicKey || '') &&
+    HEX_64.test(envelope.targetPublicKey || '')
+  );
+}
+
 export async function sendMessage(req, res) {
   try {
-    const { to, ciphertext, nonce, senderPublicKey, recipientPublicKey, attachmentId } = req.body;
-    if (!to || !ciphertext || !nonce || !senderPublicKey || !recipientPublicKey) {
+    const { to, forRecipient, forSender, attachmentId } = req.body;
+    if (!to || !validateEnvelope(forRecipient) || !validateEnvelope(forSender)) {
       return res.status(400).json({
         success: false,
-        error: 'to, ciphertext, nonce, senderPublicKey and recipientPublicKey are all required',
+        error: 'to, forRecipient and forSender (each a sealed-box envelope) are all required',
       });
     }
     if (!mongoose.isValidObjectId(to)) {
       return res.status(400).json({ success: false, error: 'Invalid recipient id' });
-    }
-    if (!HEX_64.test(senderPublicKey) || !HEX_64.test(recipientPublicKey)) {
-      return res.status(400).json({ success: false, error: 'senderPublicKey/recipientPublicKey must be 64-char hex' });
     }
     if (attachmentId && !mongoose.isValidObjectId(attachmentId)) {
       return res.status(400).json({ success: false, error: 'Invalid attachment id' });
@@ -25,10 +32,8 @@ export async function sendMessage(req, res) {
     const message = await Message.create({
       from: req.user._id,
       to,
-      ciphertext,
-      nonce,
-      senderPublicKey: senderPublicKey.toLowerCase(),
-      recipientPublicKey: recipientPublicKey.toLowerCase(),
+      forRecipient: { ...forRecipient, targetPublicKey: forRecipient.targetPublicKey.toLowerCase() },
+      forSender: { ...forSender, targetPublicKey: forSender.targetPublicKey.toLowerCase() },
       attachment: attachmentId || undefined,
     });
 
@@ -57,7 +62,7 @@ export async function getConversation(req, res) {
     ],
   })
     .sort({ createdAt: 1 })
-    .populate('attachment', 'filename mimetype size nonce senderPublicKey recipientPublicKey');
+    .populate('attachment', 'filename mimetype size nonce ephemeralPublicKey targetPublicKey');
 
   res.json({ success: true, data: messages });
 }

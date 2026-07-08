@@ -25,10 +25,12 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, callback) {
-        if (allowedOrigins.includes('*') || !origin || allowedOrigins.includes(origin)) {
-          return callback(null, true);
-        }
-        return callback(new Error(`Origin ${origin} is not allowed by CORS`));
+        // Reject by simply not allowing the origin (callback(null, false))
+        // rather than passing an Error — an Error here falls through to the
+        // Express error handler as a generic 500 with no CORS header at all,
+        // which reads as a confusing crash instead of a plain "not allowed".
+        const allowed = allowedOrigins.includes('*') || !origin || allowedOrigins.includes(origin);
+        callback(null, allowed);
       },
     })
   );
