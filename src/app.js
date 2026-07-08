@@ -10,6 +10,12 @@ import { authLimiter } from './middleware/rateLimiter.js';
 export function createApp() {
   const app = express();
 
+  // Vercel (and most PaaS hosts) sit behind a reverse proxy and set
+  // X-Forwarded-For. Without trust proxy enabled, express-rate-limit
+  // refuses to trust that header and throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+  // on every request, which was breaking /api/auth/* entirely.
+  app.set('trust proxy', 1);
+
   // The API is deliberately consumed cross-origin (frontend dev server runs
   // on a different port), so the default same-origin resource policy would
   // block the browser from reading any response, including plain JSON.
