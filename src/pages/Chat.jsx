@@ -3,8 +3,8 @@ import { useAuth } from '../context/AuthContext.jsx';
 import { useKeyRotation } from '../hooks/useKeyRotation.js';
 import client from '../api/client.js';
 import { connectSocket, getSocket } from '../api/socket.js';
-import { sealMessage, unsealMessage, sealBytes } from '../crypto/keys.js';
-import { getCurrentKeyPair, findSecretKeyForPublicKey } from '../crypto/keyStorage.js';
+import { sealMessage, unsealMessage, sealBytes, pickRandom } from '../crypto/keys.js';
+import { getCurrentKeySet, findSecretKeyForPublicKey } from '../crypto/keyStorage.js';
 import UserList from '../components/UserList.jsx';
 import MessageBubble from '../components/MessageBubble.jsx';
 
@@ -83,12 +83,16 @@ export default function Chat() {
     e.preventDefault();
     if (!draft.trim() || !selectedUser) return;
     try {
-      const mine = getCurrentKeyPair(user.id);
+      // Both sides pick a random key from the target's current 5-key pool —
+      // this conversation's ciphertext ends up spread across multiple keys
+      // instead of always the same one.
+      const myKey = pickRandom(getCurrentKeySet(user.id));
+      const recipientPublicKey = pickRandom(selectedUser.publicKeys);
       // Sealed twice: once to the recipient (so they can read it), once to
-      // my own current key (so I can read my own sent history back — the
-      // ephemeral key from either seal is discarded right after sealing).
-      const forRecipient = sealMessage(draft, selectedUser.publicKey);
-      const forSender = sealMessage(draft, mine.publicKey);
+      // my own key (so I can read my own sent history back — the ephemeral
+      // key from either seal is discarded right after sealing).
+      const forRecipient = sealMessage(draft, recipientPublicKey);
+      const forSender = sealMessage(draft, myKey.publicKey);
       const { data } = await client.post('/messages', { to: selectedUser.id, forRecipient, forSender });
       setMessages((prev) => [...prev, decorate(data.data)]);
       setDraft('');
@@ -102,12 +106,13 @@ export default function Chat() {
     e.target.value = '';
     if (!file || !selectedUser) return;
     try {
-      const mine = getCurrentKeyPair(user.id);
+      const myKey = pickRandom(getCurrentKeySet(user.id));
+      const recipientPublicKey = pickRandom(selectedUser.publicKeys);
       const fileBytes = new Uint8Array(await file.arrayBuffer());
       // Attachments are sealed to the recipient only (not doubled like text)
       // to avoid uploading every file twice — the sender keeps their own
       // copy locally, so they don't need a server-side readable copy too.
-      const sealed = sealBytes(fileBytes, selectedUser.publicKey);
+      const sealed = sealBytes(fileBytes, recipientPublicKey);
 
       const formData = new FormData();
       formData.append('file', new Blob([sealed.cipherBytes]), file.name);
@@ -117,8 +122,8 @@ export default function Chat() {
       formData.append('targetPublicKey', sealed.targetPublicKey);
       const uploadRes = await client.post('/attachments', formData);
 
-      const forRecipient = sealMessage('', selectedUser.publicKey);
-      const forSender = sealMessage('', mine.publicKey);
+      const forRecipient = sealMessage('', recipientPublicKey);
+      const forSender = sealMessage('', myKey.publicKey);
       const { data } = await client.post('/messages', {
         to: selectedUser.id,
         forRecipient,
@@ -170,11 +175,11 @@ export default function Chat() {
         {!canChat && (
           <div className="key-warning">
             <p>
-              No private key found on this device. Either you cleared local storage or this is a new device.
-              Old messages encrypted under your previous key will remain unreadable, but you can generate a
-              new keypair to continue chatting.
+              No private keys found on this device. Either you cleared local storage or this is a new device.
+              Old messages encrypted under your previous keys will remain unreadable, but you can generate a
+              fresh 5-key set to continue chatting.
             </p>
-            <button onClick={handleRotateNow}>Generate new keypair for this device</button>
+            <button onClick={handleRotateNow}>Generate new keys for this device</button>
           </div>
         )}
 

@@ -23,9 +23,29 @@ export function addKeyToRing(userId, { publicKey, secretKey }) {
   localStorage.setItem(keyringKey(userId), JSON.stringify(ring));
 }
 
+// Keys are generated and rotated in pools of 5 (see generateKeySet in
+// crypto/keys.js) — this adds a whole pool at once, all sharing the same
+// createdAt so they're recognizable as one "generation" later.
+export function addKeySetToRing(userId, keyPairs) {
+  const ring = getKeyring(userId);
+  const createdAt = Date.now();
+  keyPairs.forEach(({ publicKey, secretKey }) => {
+    ring.push({ publicKey: publicKey.toLowerCase(), secretKey, createdAt });
+  });
+  localStorage.setItem(keyringKey(userId), JSON.stringify(ring));
+}
+
 export function getCurrentKeyPair(userId) {
   const ring = getKeyring(userId);
   return ring.length ? ring[ring.length - 1] : null;
+}
+
+// The most recently added pool of `size` keys — i.e. this device's current
+// set of live, server-advertised keypairs, as opposed to retired ones kept
+// around only to decrypt old history.
+export function getCurrentKeySet(userId, size = 5) {
+  const ring = getKeyring(userId);
+  return ring.slice(-size);
 }
 
 export function findSecretKeyForPublicKey(userId, publicKeyHex) {

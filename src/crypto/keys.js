@@ -24,6 +24,20 @@ export function generateKeyPair() {
   return { publicKey: toHex(publicKey), secretKey: toHex(secretKey) };
 }
 
+export const KEY_SET_SIZE = 5;
+
+// A pool of 5 independent keypairs instead of one. Senders pick a random
+// entry from the recipient's current pool per message (see pickRandom), so
+// a single conversation's ciphertext is spread across multiple keys rather
+// than always the same one.
+export function generateKeySet(size = KEY_SET_SIZE) {
+  return Array.from({ length: size }, () => generateKeyPair());
+}
+
+export function pickRandom(array) {
+  return array[Math.floor(Math.random() * array.length)];
+}
+
 // --- Sealed-box encryption ------------------------------------------------
 // A long-term public key is only ever an input to sealMessage(), never to
 // unsealMessage(); a long-term private key is only ever an input to

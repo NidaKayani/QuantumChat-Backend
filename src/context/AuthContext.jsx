@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useCallback } from 'react';
 import client from '../api/client.js';
-import { generateKeyPair } from '../crypto/keys.js';
+import { generateKeySet } from '../crypto/keys.js';
 import {
-  addKeyToRing,
+  addKeySetToRing,
   getCurrentKeyPair,
   hasKeyring,
   saveSession,
@@ -18,35 +18,45 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(getStoredUser());
 
   const register = useCallback(async ({ username, email, password }) => {
-    const { publicKey, secretKey } = generateKeyPair();
-    const { data } = await client.post('/auth/register', { username, email, password, publicKey });
+    const keySet = generateKeySet();
+    const publicKeys = keySet.map((k) => k.publicKey);
+    const { data } = await client.post('/auth/register', { username, email, password, publicKeys });
     const { token, user: newUser } = data.data;
-    addKeyToRing(newUser.id, { publicKey, secretKey });
+    addKeySetToRing(newUser.id, keySet);
     saveSession(token, newUser);
     setUser(newUser);
     connectSocket();
     return newUser;
   }, []);
 
+  // Every login rotates the whole 5-key pool: a fresh set is generated
+  // client-side and submitted alongside the password, and if login
+  // succeeds the server replaces the advertised keys with it. The previous
+  // pool stays in the local keyring, so this device can still read history
+  // sealed under it — only the publicly-advertised "current" keys move on.
   const login = useCallback(async ({ email, password }) => {
-    const { data } = await client.post('/auth/login', { email, password });
+    const keySet = generateKeySet();
+    const publicKeys = keySet.map((k) => k.publicKey);
+    const { data } = await client.post('/auth/login', { email, password, publicKeys });
     const { token, user: loggedInUser } = data.data;
+    addKeySetToRing(loggedInUser.id, keySet);
     saveSession(token, loggedInUser);
     setUser(loggedInUser);
     connectSocket();
     return loggedInUser;
   }, []);
 
-  // Generates a fresh keypair, adds it to the local keyring, and publishes
-  // the new public key to the server. Used both for the automatic 30-minute
+  // Generates a fresh 5-key pool, adds it to the local keyring, and
+  // publishes it to the server. Used both for the automatic 30-minute
   // rotation and to recover a missing keyring on a new/wiped device — in the
   // latter case, history encrypted under prior keys stays unreadable unless
   // this device already held those keys, which is the expected E2E tradeoff.
   const rotateKey = useCallback(async () => {
     if (!user) throw new Error('Not authenticated');
-    const { publicKey, secretKey } = generateKeyPair();
-    const { data } = await client.patch('/users/me/public-key', { publicKey });
-    addKeyToRing(user.id, { publicKey, secretKey });
+    const keySet = generateKeySet();
+    const publicKeys = keySet.map((k) => k.publicKey);
+    const { data } = await client.patch('/users/me/public-keys', { publicKeys });
+    addKeySetToRing(user.id, keySet);
     saveSession(getToken(), data.data);
     setUser(data.data);
     return data.data;
