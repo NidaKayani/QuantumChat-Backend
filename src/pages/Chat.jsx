@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext.jsx';
 import client from '../api/client.js';
 import { connectSocket, getSocket } from '../api/socket.js';
 import { sealMessage, unsealMessage, sealBytes, pickRandom } from '../crypto/keys.js';
-import { parseKeyFile } from '../crypto/keyFile.js';
+import { formatKeyFile, downloadKeyFile, parseKeyFile } from '../crypto/keyFile.js';
 import { getCurrentKeySet, findSecretKeyForPublicKey } from '../crypto/keyStorage.js';
 import { cacheVoiceNote, normalizeAttachment, pickRecorderMimeType } from '../crypto/voiceCache.js';
 import { playReceiveSound, playSendSound } from '../utils/sounds.js';
@@ -556,8 +556,18 @@ export default function Chat() {
   }
 
   async function handleGenerateKeys() {
-    await regenerateKeys();
-    setError('');
+    try {
+      const { keySet } = await regenerateKeys();
+      const content = formatKeyFile({
+        username: user.username,
+        email: user.email,
+        secretKeys: keySet.map((k) => k.secretKey),
+      });
+      downloadKeyFile(content);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.error || err.message || 'Failed to generate keys');
+    }
   }
 
   async function handleImportKeyFile(e) {
@@ -645,7 +655,7 @@ export default function Chat() {
               <button onClick={() => keyFileInputRef.current?.click()}>Import keys.txt</button>
               <input ref={keyFileInputRef} type="file" accept=".txt" hidden onChange={handleImportKeyFile} />
               <button className="secondary-button" onClick={handleGenerateKeys}>
-                Generate new keys instead
+                Generate new key & download
               </button>
             </div>
           </div>
