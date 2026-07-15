@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   sendMessage,
   getConversation,
+  markConversationRead,
   deleteMessage,
   reactToMessage,
   editMessage,
@@ -13,6 +14,7 @@ const router = Router();
 router.use(requireAuth);
 router.post('/', sendMessage);
 router.get('/:userId', getConversation);
+router.post('/:userId/read', markConversationRead);
 router.patch('/:messageId', editMessage);
 router.delete('/:messageId', deleteMessage);
 router.post('/:messageId/reactions', reactToMessage);

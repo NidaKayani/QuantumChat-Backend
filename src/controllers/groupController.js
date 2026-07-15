@@ -231,12 +231,31 @@ export async function getGroupMessages(req, res) {
       return res.status(403).json({ success: false, error: 'Not a group member' });
     }
 
-    const messages = await Message.find({ group: groupId })
-      .sort({ createdAt: 1 })
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 80, 1), 200);
+    const before = req.query.before ? new Date(req.query.before) : null;
+    const filter = { group: groupId };
+    if (before && !Number.isNaN(before.getTime())) {
+      filter.createdAt = { $lt: before };
+    }
+
+    const rows = await Message.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(limit + 1)
       .populate('attachment', ATTACHMENT_POPULATE)
       .populate('replyTo', 'from forRecipient forSender envelopes group createdAt');
 
-    res.json({ success: true, data: messages.map(toClientMessage) });
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    page.reverse();
+
+    res.json({
+      success: true,
+      data: page.map(toClientMessage),
+      meta: {
+        hasMore,
+        nextBefore: page.length ? page[0].createdAt : null,
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

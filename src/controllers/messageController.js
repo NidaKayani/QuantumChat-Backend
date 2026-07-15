@@ -118,7 +118,7 @@ async function assertReplyAllowed(req, replyToId, { to, groupId }) {
 
 export async function sendMessage(req, res) {
   try {
-    const { to, forRecipient, forSender, attachmentId, replyTo } = req.body;
+    const { to, forRecipient, forSender, attachmentId, replyTo, forwardedFrom } = req.body;
     if (!to || !validateEnvelope(forRecipient) || !validateEnvelope(forSender)) {
       return res.status(400).json({
         success: false,
@@ -144,6 +144,15 @@ export async function sendMessage(req, res) {
       forSender: normalizeEnvelope(forSender),
       attachment: attachmentId || undefined,
       replyTo: replyToId,
+      forwardedFrom:
+        forwardedFrom && typeof forwardedFrom === 'object'
+          ? {
+              username: String(forwardedFrom.username || '').slice(0, 64) || undefined,
+              messageId: mongoose.isValidObjectId(forwardedFrom.messageId)
+                ? forwardedFrom.messageId
+                : undefined,
+            }
+          : undefined,
     });
 
     const message = await Message.findById(created._id)
@@ -168,17 +177,115 @@ export async function getConversation(req, res) {
       return res.status(400).json({ success: false, error: 'Invalid user id' });
     }
 
-    const messages = await Message.find({
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 80, 1), 200);
+    const before = req.query.before ? new Date(req.query.before) : null;
+    const markRead = req.query.markRead !== '0';
+
+    const filter = {
       $or: [
         { from: req.user._id, to: userId },
         { from: userId, to: req.user._id },
       ],
-    })
-      .sort({ createdAt: 1 })
+    };
+    if (before && !Number.isNaN(before.getTime())) {
+      filter.createdAt = { $lt: before };
+    }
+
+    const rows = await Message.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(limit + 1)
       .populate('attachment', ATTACHMENT_POPULATE)
       .populate('replyTo', 'from forRecipient forSender envelopes group createdAt');
 
-    res.json({ success: true, data: messages.map(toClientMessage) });
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+    page.reverse();
+
+    const now = new Date();
+    const deliveredIds = [];
+    const readIds = [];
+    for (const msg of page) {
+      if (String(msg.from) === String(userId) && String(msg.to) === String(req.user._id)) {
+        if (!msg.deliveredAt) {
+          msg.deliveredAt = now;
+          deliveredIds.push(msg._id);
+        }
+        if (markRead && !msg.readAt) {
+          msg.readAt = now;
+          msg.deliveredAt = msg.deliveredAt || now;
+          readIds.push(msg._id);
+        }
+      }
+    }
+    if (deliveredIds.length || readIds.length) {
+      const ops = [];
+      if (deliveredIds.length) {
+        ops.push(
+          Message.updateMany(
+            { _id: { $in: deliveredIds }, deliveredAt: null },
+            { $set: { deliveredAt: now } }
+          )
+        );
+      }
+      if (readIds.length) {
+        ops.push(
+          Message.updateMany({ _id: { $in: readIds } }, { $set: { deliveredAt: now, readAt: now } })
+        );
+      }
+      await Promise.all(ops);
+
+      const io = req.app.get('io');
+      if (io) {
+        for (const msg of page) {
+          if (
+            String(msg.from) === String(userId) &&
+            (deliveredIds.some((id) => String(id) === String(msg._id)) ||
+              readIds.some((id) => String(id) === String(msg._id)))
+          ) {
+            const payload = {
+              id: msg._id.toString(),
+              deliveredAt: msg.deliveredAt,
+              readAt: msg.readAt || null,
+            };
+            io.to(String(userId)).emit('message:status', payload);
+          }
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      data: page.map(toClientMessage),
+      meta: {
+        hasMore,
+        nextBefore: page.length ? page[0].createdAt : null,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+export async function markConversationRead(req, res) {
+  try {
+    const { userId } = req.params;
+    if (!mongoose.isValidObjectId(userId)) {
+      return res.status(400).json({ success: false, error: 'Invalid user id' });
+    }
+    const now = new Date();
+    const result = await Message.updateMany(
+      { from: userId, to: req.user._id, readAt: null },
+      { $set: { deliveredAt: now, readAt: now } }
+    );
+    const io = req.app.get('io');
+    if (io && result.modifiedCount > 0) {
+      io.to(String(userId)).emit('message:status', {
+        conversationWith: req.user._id.toString(),
+        readAt: now,
+        bulk: true,
+      });
+    }
+    res.json({ success: true, data: { updated: result.modifiedCount } });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }

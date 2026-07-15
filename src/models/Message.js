@@ -45,6 +45,13 @@ const messageSchema = new mongoose.Schema(
     reactions: { type: [reactionSchema], default: [] },
     replyTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Message' },
     editedAt: { type: Date },
+    deliveredAt: { type: Date },
+    readAt: { type: Date },
+    // Optional display metadata when this message was forwarded (plaintext was re-sealed).
+    forwardedFrom: {
+      username: { type: String },
+      messageId: { type: mongoose.Schema.Types.ObjectId },
+    },
   },
   { timestamps: true }
 );
