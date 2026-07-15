@@ -2,11 +2,29 @@ import mongoose from 'mongoose';
 
 const HEX_64 = /^[0-9a-f]{64}$/i;
 
-// A sealed-box envelope: ciphertext produced with a one-time ephemeral
-// keypair + the target's long-term public key. Only the private half of
-// targetPublicKey can open it — see frontend/src/crypto/keys.js.
 const envelopeSchema = new mongoose.Schema(
   {
+    ciphertext: { type: String, required: true },
+    nonce: { type: String, required: true },
+    ephemeralPublicKey: { type: String, required: true, match: HEX_64 },
+    targetPublicKey: { type: String, required: true, match: HEX_64 },
+  },
+  { _id: false }
+);
+
+const reactionSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    forRecipient: { type: envelopeSchema },
+    forSender: { type: envelopeSchema },
+    emoji: { type: String, maxlength: 16 },
+  },
+  { _id: false, timestamps: { createdAt: true, updatedAt: false } }
+);
+
+const memberEnvelopeSchema = new mongoose.Schema(
+  {
+    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
     ciphertext: { type: String, required: true },
     nonce: { type: String, required: true },
     ephemeralPublicKey: { type: String, required: true, match: HEX_64 },
@@ -18,21 +36,37 @@ const envelopeSchema = new mongoose.Schema(
 const messageSchema = new mongoose.Schema(
   {
     from: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    to: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
-    // A sealed-box envelope encrypts to exactly one public key, so the same
-    // plaintext is sealed twice at send time: once to the recipient's
-    // current key (so they can read it) and once to the sender's own
-    // current key (so the sender can read their own sent history back —
-    // the ephemeral key used to seal is discarded immediately and can't be
-    // recovered, so without this second copy the sender couldn't reopen
-    // their own message either).
-    forRecipient: { type: envelopeSchema, required: true },
-    forSender: { type: envelopeSchema, required: true },
+    to: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+    forRecipient: { type: envelopeSchema },
+    forSender: { type: envelopeSchema },
+    group: { type: mongoose.Schema.Types.ObjectId, ref: 'Group', index: true },
+    envelopes: { type: [memberEnvelopeSchema], default: undefined },
     attachment: { type: mongoose.Schema.Types.ObjectId, ref: 'Attachment' },
+    reactions: { type: [reactionSchema], default: [] },
   },
   { timestamps: true }
 );
 
 messageSchema.index({ from: 1, to: 1, createdAt: 1 });
+messageSchema.index({ group: 1, createdAt: 1 });
+
+messageSchema.pre('validate', function ensureShape(next) {
+  const isGroup = Boolean(this.group);
+  if (isGroup) {
+    if (!Array.isArray(this.envelopes) || this.envelopes.length < 2) {
+      return next(new Error('Group messages require envelopes for each member'));
+    }
+    this.to = undefined;
+    this.forRecipient = undefined;
+    this.forSender = undefined;
+  } else {
+    if (!this.to || !this.forRecipient || !this.forSender) {
+      return next(new Error('DM messages require to, forRecipient and forSender'));
+    }
+    this.group = undefined;
+    this.envelopes = undefined;
+  }
+  next();
+});
 
 export default mongoose.model('Message', messageSchema, 'messages');

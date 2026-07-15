@@ -1,0 +1,227 @@
+import mongoose from 'mongoose';
+import Group from '../models/Group.js';
+import User from '../models/User.js';
+import Message from '../models/Message.js';
+
+const HEX_64 = /^[0-9a-f]{64}$/i;
+const ATTACHMENT_POPULATE =
+  'filename mimetype size nonce ephemeralPublicKey targetPublicKey forSenderNonce forSenderEphemeralPublicKey forSenderTargetPublicKey';
+
+function validateEnvelope(envelope) {
+  return (
+    envelope &&
+    typeof envelope.ciphertext === 'string' &&
+    typeof envelope.nonce === 'string' &&
+    HEX_64.test(envelope.ephemeralPublicKey || '') &&
+    HEX_64.test(envelope.targetPublicKey || '')
+  );
+}
+
+function normalizeEnvelope(envelope) {
+  return {
+    ...envelope,
+    ephemeralPublicKey: String(envelope.ephemeralPublicKey).toLowerCase(),
+    targetPublicKey: String(envelope.targetPublicKey).toLowerCase(),
+  };
+}
+
+function toClientMessage(doc) {
+  const message = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  message.id = message._id;
+  if (message.attachment && typeof message.attachment === 'object') {
+    message.attachment = {
+      ...message.attachment,
+      id: message.attachment._id || message.attachment.id,
+    };
+  }
+  if (message.group) {
+    message.group = message.group._id || message.group;
+  }
+  message.reactions = (message.reactions || []).map((r) => ({
+    user: r.user?.toString?.() || String(r.user),
+    forRecipient: r.forRecipient,
+    forSender: r.forSender,
+    emoji: r.emoji || undefined,
+    createdAt: r.createdAt,
+  }));
+  if (Array.isArray(message.envelopes)) {
+    message.envelopes = message.envelopes.map((e) => ({
+      ...e,
+      user: e.user?.toString?.() || String(e.user),
+    }));
+  }
+  return message;
+}
+
+function emitToMembers(io, memberIds, event, payload) {
+  if (!io) return;
+  for (const id of memberIds) {
+    io.to(String(id)).emit(event, payload);
+  }
+}
+
+export async function createGroup(req, res) {
+  try {
+    const { name, memberIds } = req.body;
+    if (!name || typeof name !== 'string' || name.trim().length < 2) {
+      return res.status(400).json({ success: false, error: 'Group name must be at least 2 characters' });
+    }
+    if (!Array.isArray(memberIds) || memberIds.length < 1) {
+      return res.status(400).json({ success: false, error: 'Select at least one other member' });
+    }
+
+    const uniqueIds = [...new Set(memberIds.map(String))].filter((id) => id !== req.user._id.toString());
+    if (uniqueIds.length < 1) {
+      return res.status(400).json({ success: false, error: 'Select at least one other member' });
+    }
+    if (uniqueIds.some((id) => !mongoose.isValidObjectId(id))) {
+      return res.status(400).json({ success: false, error: 'Invalid member id' });
+    }
+
+    const found = await User.find({ _id: { $in: uniqueIds } }).select('_id');
+    if (found.length !== uniqueIds.length) {
+      return res.status(400).json({ success: false, error: 'One or more members were not found' });
+    }
+
+    const members = [req.user._id, ...uniqueIds];
+    const group = await Group.create({
+      name: name.trim(),
+      createdBy: req.user._id,
+      members,
+    });
+
+    const populated = await Group.findById(group._id).populate(
+      'members',
+      'username email publicKeys lastLoginAt keyRotatedAt'
+    );
+
+    const payload = populated.toPublicJSON();
+    const io = req.app.get('io');
+    emitToMembers(io, members, 'group:new', payload);
+
+    res.status(201).json({ success: true, data: payload });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+export async function listGroups(req, res) {
+  try {
+    const groups = await Group.find({ members: req.user._id })
+      .sort({ updatedAt: -1 })
+      .populate('members', 'username email publicKeys lastLoginAt keyRotatedAt');
+    res.json({ success: true, data: groups.map((g) => g.toPublicJSON()) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+export async function getGroup(req, res) {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) {
+      return res.status(400).json({ success: false, error: 'Invalid group id' });
+    }
+    const group = await Group.findById(req.params.id).populate(
+      'members',
+      'username email publicKeys lastLoginAt keyRotatedAt'
+    );
+    if (!group) return res.status(404).json({ success: false, error: 'Group not found' });
+    if (!group.members.some((m) => String(m._id || m) === req.user._id.toString())) {
+      return res.status(403).json({ success: false, error: 'Not a group member' });
+    }
+    res.json({ success: true, data: group.toPublicJSON() });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+export async function sendGroupMessage(req, res) {
+  try {
+    const { groupId } = req.params;
+    const { envelopes, attachmentId } = req.body;
+    if (!mongoose.isValidObjectId(groupId)) {
+      return res.status(400).json({ success: false, error: 'Invalid group id' });
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, error: 'Group not found' });
+    if (!group.members.some((m) => m.toString() === req.user._id.toString())) {
+      return res.status(403).json({ success: false, error: 'Not a group member' });
+    }
+
+    if (!Array.isArray(envelopes) || envelopes.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'envelopes must include a sealed-box copy for each member',
+      });
+    }
+
+    const memberSet = new Set(group.members.map((m) => m.toString()));
+    const normalized = [];
+    for (const item of envelopes) {
+      const userId = item?.user != null ? String(item.user) : '';
+      if (!memberSet.has(userId) || !mongoose.isValidObjectId(userId)) {
+        return res.status(400).json({ success: false, error: 'Envelope user must be a group member' });
+      }
+      if (!validateEnvelope(item)) {
+        return res.status(400).json({ success: false, error: 'Each envelope must be a valid sealed box' });
+      }
+      normalized.push({
+        user: userId,
+        ...normalizeEnvelope(item),
+      });
+    }
+
+    const covered = new Set(normalized.map((e) => String(e.user)));
+    for (const memberId of memberSet) {
+      if (!covered.has(memberId)) {
+        return res.status(400).json({ success: false, error: 'Missing sealed envelope for a group member' });
+      }
+    }
+
+    if (attachmentId && !mongoose.isValidObjectId(attachmentId)) {
+      return res.status(400).json({ success: false, error: 'Invalid attachment id' });
+    }
+
+    const created = await Message.create({
+      from: req.user._id,
+      group: group._id,
+      envelopes: normalized,
+      attachment: attachmentId || undefined,
+    });
+
+    group.updatedAt = new Date();
+    await group.save();
+
+    const message = await Message.findById(created._id).populate('attachment', ATTACHMENT_POPULATE);
+    const payload = toClientMessage(message);
+    const io = req.app.get('io');
+    emitToMembers(io, [...memberSet], 'message:new', payload);
+
+    res.status(201).json({ success: true, data: payload });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
+
+export async function getGroupMessages(req, res) {
+  try {
+    const { groupId } = req.params;
+    if (!mongoose.isValidObjectId(groupId)) {
+      return res.status(400).json({ success: false, error: 'Invalid group id' });
+    }
+    const group = await Group.findById(groupId);
+    if (!group) return res.status(404).json({ success: false, error: 'Group not found' });
+    if (!group.members.some((m) => m.toString() === req.user._id.toString())) {
+      return res.status(403).json({ success: false, error: 'Not a group member' });
+    }
+
+    const messages = await Message.find({ group: groupId })
+      .sort({ createdAt: 1 })
+      .populate('attachment', ATTACHMENT_POPULATE);
+
+    res.json({ success: true, data: messages.map(toClientMessage) });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+}
