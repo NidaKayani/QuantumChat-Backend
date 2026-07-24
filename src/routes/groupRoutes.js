@@ -23,6 +23,12 @@ import {
   unpinMessage,
   votePoll,
   publishQuantumAIGroupResponse,
+  discoverGroups,
+  joinPublicGroup,
+  createJoinRequest,
+  listJoinRequests,
+  acceptJoinRequest,
+  rejectJoinRequest,
 } from '../controllers/groupController.js';
 
 const router = Router();
@@ -32,9 +38,17 @@ router.use(requireAuth);
 router.get('/', listGroups);
 router.post('/', createGroup);
 
+router.get('/discover', discoverGroups);
+
 router.get('/invite/:code', previewInvite);
 router.post('/join', joinViaInvite);
 router.post('/join/:code', joinViaInvite);
+
+router.post('/:id/join', joinPublicGroup);
+router.post('/:id/join-requests', createJoinRequest);
+router.get('/:id/join-requests', listJoinRequests);
+router.post('/:id/join-requests/:userId/accept', acceptJoinRequest);
+router.post('/:id/join-requests/:userId/reject', rejectJoinRequest);
 
 router.get('/:id', getGroup);
 router.patch('/:id', updateGroup);
