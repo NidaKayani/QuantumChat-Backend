@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
 import { groupPhotoUpload } from '../middleware/upload.js';
+import { apiLimiter } from '../middleware/rateLimiter.js';
 import {
   createGroup,
   listGroups,
@@ -34,6 +35,7 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+router.use(apiLimiter);
 
 router.get('/', listGroups);
 router.post('/', createGroup);
