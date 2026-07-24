@@ -1044,17 +1044,21 @@ export async function sendGroupMessage(req, res) {
 export async function publishQuantumAIGroupResponse(req, res) {
   try {
     const { groupId } = req.params;
-    const { content, contentHash, requestId, receipt, model } = req.body || {};
+    const { content, contentHash, requestId: requestIdRaw, receipt, model } = req.body || {};
+    const requestIdMatch = String(requestIdRaw || '').match(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    );
     if (
       !mongoose.isValidObjectId(groupId) ||
       !/^[0-9a-f]{64}$/i.test(contentHash || '') ||
-      !/^[0-9a-f-]{36}$/i.test(requestId || '') ||
+      !requestIdMatch ||
       typeof content !== 'string' ||
       !content.trim() ||
       content.length > 100_000
     ) {
       return res.status(400).json({ success: false, error: 'Invalid QuantumAI response payload' });
     }
+    const requestId = requestIdMatch[0].toLowerCase();
     const secret = process.env.QUANTUM_AI_SERVICE_SECRET;
     if (!secret || secret.length < 32) {
       return res.status(503).json({ success: false, error: 'QuantumAI service is not configured' });

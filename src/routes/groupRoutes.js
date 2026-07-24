@@ -34,8 +34,10 @@ import {
 
 const router = Router();
 
-router.use(requireAuth);
+// Rate-limit before auth so CodeQL js/missing-rate-limiting sees a limiter
+// on authorization/DB route handlers (requireAuth touches the user store).
 router.use(apiLimiter);
+router.use(requireAuth);
 
 router.get('/', listGroups);
 router.post('/', createGroup);
